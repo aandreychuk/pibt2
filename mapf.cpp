@@ -1,12 +1,9 @@
 #include <getopt.h>
 
 #include <default_params.hpp>
-#include <hca.hpp>
 #include <iostream>
 #include <pibt.hpp>
-#include <pibt_plus.hpp>
 #include <problem.hpp>
-#include <push_and_swap.hpp>
 #include <random>
 #include <vector>
 
@@ -126,12 +123,6 @@ std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
   std::unique_ptr<MAPF_Solver> solver;
   if (solver_name == "PIBT") {
     solver = std::make_unique<PIBT>(P);
-  } else if (solver_name == "HCA") {
-    solver = std::make_unique<HCA>(P);
-  } else if (solver_name == "PIBT_PLUS") {
-    solver = std::make_unique<PIBT_PLUS>(P);
-  } else if (solver_name == "PushAndSwap") {
-    solver = std::make_unique<PushAndSwap>(P);
   } else {
     std::cout << "warn@mapf: "
               << "unknown solver name, " + solver_name + ", continue by PIBT"
@@ -159,7 +150,4 @@ void printHelp()
             << "\n\nSolver Options:" << std::endl;
   // each solver
   PIBT::printHelp();
-  HCA::printHelp();
-  PIBT_PLUS::printHelp();
-  PushAndSwap::printHelp();
 }
