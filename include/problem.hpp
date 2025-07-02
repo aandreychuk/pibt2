@@ -1,5 +1,5 @@
 #pragma once
-#include <graph.hpp>
+#include "graph.hpp"
 #include <random>
 
 #include "default_params.hpp"
