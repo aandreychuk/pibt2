@@ -3,7 +3,6 @@
 #include <random>
 
 #include "default_params.hpp"
-#include "task.hpp"
 #include "util.hpp"
 
 using Config = std::vector<Node*>;  // < loc_0[t], loc_1[t], ... >
@@ -54,7 +53,7 @@ public:
   Problem(std::string _instance, Graph* _G, std::mt19937* _MT, Config _config_s,
           Config _config_g, int _num_agents, int _max_timestep,
           int _max_comp_time);
-  ~Problem(){};
+  virtual ~Problem(){};
 
   Graph* getG() { return G; }
   int getNum() { return num_agents; }
@@ -82,6 +81,17 @@ public:
   LMAPF_Instance():instance_initialized(false) {}
   void update_goals(Config cur_positions);
   ~LMAPF_Instance();
+  
+  // Getters for validation
+  const Configs& getAllGoals() const { return all_goals; }
+  const std::vector<int>& getCurrentGoals() const { return cur_goals; }
+  Config getGoalConfigForAgent(int agent_id, int goal_index) const {
+    if (agent_id >= 0 && agent_id < (int)all_goals.size() && 
+        goal_index >= 0 && goal_index < (int)all_goals[agent_id].size()) {
+      return {all_goals[agent_id][goal_index]};
+    }
+    return {};
+  }
 };
 
 class MAPF_Instance : public Problem
@@ -106,35 +116,4 @@ public:
 
   // used when making new instance file
   void makeScenFile(const std::string& output_file);
-};
-
-class MAPD_Instance : public Problem
-{
-private:
-  float task_frequency;
-  int task_num;
-
-  int current_timestep;  // current timestep
-  Tasks TASKS_OPEN;
-  Tasks TASKS_CLOSED;
-
-  Nodes LOCS_PICKUP;             // candidates of pickup locations
-  Nodes LOCS_DELIVERY;           // candidates of delivery locations
-  Nodes LOCS_NONTASK_ENDPOINTS;  // endpoints, not necessary for PIBT
-  Nodes LOCS_ENDPOINTS;          // pickup, delivery, nontasks
-
-  bool specify_pickup_deliv_locs;
-  void setupSpetialNodes();
-
-public:
-  MAPD_Instance(const std::string& _instance);
-  ~MAPD_Instance();
-
-  void update();
-  int getCurrentTimestep() const { return current_timestep; }
-  float getTaskFrequency() const { return task_frequency; }
-  float getTaskNum() const { return task_num; }
-  Tasks getOpenTasks() { return TASKS_OPEN; }
-  Tasks getClosedTasks() { return TASKS_CLOSED; }
-  Nodes getEndpoints() { return LOCS_ENDPOINTS; }
 };

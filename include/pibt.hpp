@@ -45,7 +45,7 @@ private:
   void run();
 
 public:
-  PIBT(LMAPF_Instance* _P);
+  PIBT(Problem* _P);
   ~PIBT() {}
 
   void setParams(int argc, char* argv[]);

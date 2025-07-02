@@ -1,7 +1,9 @@
 #include <getopt.h>
 
 #include <default_params.hpp>
+#include <fstream>
 #include <iostream>
+#include <memory>
 #include <pibt.hpp>
 #include <problem.hpp>
 #include <random>
@@ -9,8 +11,9 @@
 
 void printHelp();
 std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
-                                       LMAPF_Instance* P, bool verbose, int argc,
+                                       Problem* P, bool verbose, int argc,
                                        char* argv[]);
+bool detectInstanceType(const std::string& instance_file);
 
 int main(int argc, char* argv[])
 {
@@ -83,13 +86,20 @@ int main(int argc, char* argv[])
     return 0;
   }
 
-  // set problem
-  //auto P = MAPF_Instance(instance_file);
-  std::cout<<num_agents<<" MAX AGENTS\n";
-  auto P = LMAPF_Instance(instance_file, num_agents);
-  std::cout<<" LMAPF LOADED\n";
+  // Detect instance type and create appropriate instance
+  std::unique_ptr<Problem> P;
+  bool isLMAPF = detectInstanceType(instance_file);
+  
+  if (isLMAPF) {
+    std::cout << "Loading as LMAPF instance (multiple goals per agent)\n";
+    P = std::make_unique<LMAPF_Instance>(instance_file, num_agents);
+  } else {
+    std::cout << "Loading as MAPF instance (single goal per agent)\n";
+    P = std::make_unique<MAPF_Instance>(instance_file);
+  }
+  
   // set max computation time (otherwise, use param in instance_file)
-  if (max_comp_time != -1) P.setMaxCompTime(max_comp_time);
+  if (max_comp_time != -1) P->setMaxCompTime(max_comp_time);
 
   // create scenario
   /*if (make_scen) {
@@ -98,10 +108,10 @@ int main(int argc, char* argv[])
   }*/
 
   // solve
-  auto solver = getSolver(solver_name, &P, verbose, argc, argv_copy);
+  auto solver = getSolver(solver_name, P.get(), verbose, argc, argv_copy);
   solver->setLogShort(log_short);
   solver->solve();
-  /*if (solver->succeed() && !solver->getSolution().validate(&P)) {
+  /*if (solver->succeed() && !solver->getSolution().validate(P.get())) {
     std::cout << "error@mapf: invalid results" << std::endl;
     return 0;
   }*/
@@ -117,7 +127,7 @@ int main(int argc, char* argv[])
 }
 
 std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
-                                       LMAPF_Instance* P, bool verbose, int argc,
+                                       Problem* P, bool verbose, int argc,
                                        char* argv[])
 {
   std::unique_ptr<MAPF_Solver> solver;
@@ -132,6 +142,49 @@ std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
   solver->setParams(argc, argv);
   solver->setVerbose(verbose);
   return solver;
+}
+
+bool detectInstanceType(const std::string& instance_file)
+{
+  std::ifstream file(instance_file);
+  if (!file) {
+    std::cerr << "Error: Cannot open instance file " << instance_file << std::endl;
+    return false; // Default to MAPF
+  }
+  
+  std::string line;
+  int goals_count_for_current_agent = 0;
+  bool found_start = false;
+  
+  while (getline(file, line)) {
+    // Remove CRLF if present
+    if (!line.empty() && *(line.end() - 1) == 0x0d) line.pop_back();
+    
+    // Skip comments and empty lines
+    if (line.empty() || line[0] == '#') continue;
+    
+    // Check for start pattern
+    if (line.find("start:") != std::string::npos) {
+      if (found_start && goals_count_for_current_agent > 1) {
+        file.close();
+        return true; // LMAPF: Found an agent with multiple goals
+      }
+      found_start = true;
+      goals_count_for_current_agent = 0;
+    }
+    
+    // Check for goal pattern
+    if (line.find("goal:") != std::string::npos) {
+      if (found_start) {
+        goals_count_for_current_agent++;
+      }
+    }
+  }
+  
+  file.close();
+  
+  // If we found agents with multiple goals, it's LMAPF
+  return (found_start && goals_count_for_current_agent > 1);
 }
 
 void printHelp()

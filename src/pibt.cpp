@@ -2,7 +2,7 @@
 
 const std::string PIBT::SOLVER_NAME = "PIBT";
 
-PIBT::PIBT(LMAPF_Instance* _P)
+PIBT::PIBT(Problem* _P)
     : MAPF_Solver(_P),
       occupied_now(Agents(G->getNodesSize(), nullptr)),
       occupied_next(Agents(G->getNodesSize(), nullptr))
@@ -40,6 +40,10 @@ void PIBT::run()
   }
   solution.add(P->getConfigStart());
 
+  // Determine instance type once
+  LMAPF_Instance* lmapf_instance = dynamic_cast<LMAPF_Instance*>(P);
+  MAPF_Instance* mapf_instance = dynamic_cast<MAPF_Instance*>(P);
+
   // main loop
   int timestep = 0;
   while (true) {
@@ -56,7 +60,7 @@ void PIBT::run()
     }
 
     // acting
-    bool check_goal_cond = false;
+    bool check_goal_cond = true;  // Initialize as true for MAPF
     Config config(P->getNum(), nullptr);
     for (auto a : A) {
       // clear
@@ -65,7 +69,7 @@ void PIBT::run()
       // set next location
       config[a->id] = a->v_next;
       occupied_now[a->v_next->id] = a;
-      // check goal condition
+      // check goal condition (only relevant for MAPF)
       check_goal_cond &= (a->v_next == a->g);
       // update priority
       a->elapsed = (a->v_next == a->g) ? 0 : a->elapsed + 1;
@@ -76,21 +80,34 @@ void PIBT::run()
 
     // update plan
     solution.add(config);
-    P->update_goals(config);
-    for (auto a : A)
-    {
-      int old_goal = a->g->id;
-      a->g = P->getGoal(a->id);
-      if(old_goal != a->g->id) {
-        createDistanceTable(a->id);
-        reached_goals++;
+    
+    // Handle goal updates differently for LMAPF vs MAPF
+    if (lmapf_instance) {
+      // LMAPF: Update goals when agents reach them, get new goals
+      lmapf_instance->update_goals(config);
+      
+      for (auto a : A) {
+        int old_goal = a->g->id;
+        a->g = P->getGoal(a->id);
+        if (old_goal != a->g->id) {
+          createDistanceTable(a->id);
+          reached_goals++;
+        }
+      }
+    } else if (mapf_instance) {
+      // MAPF: Agents stay at their goal once reached
+      // No goal updates needed - agents keep their original goals
+      for (auto a : A) {
+        if (a->v_next == a->g) {
+          reached_goals++;
+        }
       }
     }
 
     ++timestep;
 
-    // success
-    if (check_goal_cond) {
+    // success (only for MAPF - when all agents reach their goals)
+    if (mapf_instance && check_goal_cond) {
       solved = true;
       break;
     }
@@ -100,9 +117,32 @@ void PIBT::run()
       break;
     }
   }
-  std::cout<<"Throughput = "<<reached_goals/512.0<<"\n";
+  // Output different metrics based on instance type
   std::ofstream out("log.json", std::ios::app);
-  out<<R"({"metrics": {"throughput": )"<<reached_goals/512.0<<", \"runtime\": "<<getSolverElapsedTime()/1000.0<<R"(}, "env_grid_search": {"map_name": "wfi_warehouse", "num_agents": )"<<P->getNum()<<", \"seed\": "<<P->seed<<"}, \"algorithm\": \"PIBT\"}, ";
+  int seed = lmapf_instance ? lmapf_instance->seed : 0;
+  
+  if (lmapf_instance) {
+    // LMAPF metrics: throughput
+    double throughput = reached_goals / 512.0;
+    std::cout << "Throughput = " << throughput << "\n";
+    out << R"({"metrics": {"throughput": )" << throughput 
+        << R"(, "runtime": )" << getSolverElapsedTime()/1000.0 
+        << R"(}, "env_grid_search": {"map_name": "wfi_warehouse", "num_agents": )" << P->getNum() 
+        << R"(, "seed": )" << seed 
+        << R"(}, "algorithm": "PIBT"}, )";
+  } else {
+    // MAPF metrics: Sum of Costs (SoC) and makespan
+    int soc = solution.getSOC();
+    int makespan = solution.getMakespan();
+    std::cout << "Sum of Costs (SoC) = " << soc << "\n";
+    std::cout << "Makespan = " << makespan << "\n";
+    out << R"({"metrics": {"SoC": )" << soc 
+        << R"(, "makespan": )" << makespan
+        << R"(, "runtime": )" << getSolverElapsedTime()/1000.0 
+        << R"(}, "env_grid_search": {"map_name": "wfi_warehouse", "num_agents": )" << P->getNum() 
+        << R"(, "seed": )" << seed 
+        << R"(}, "algorithm": "PIBT"}, )";
+  }
   out.close();
 
   // memory clear

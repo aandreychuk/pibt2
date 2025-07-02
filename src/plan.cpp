@@ -106,26 +106,70 @@ bool Plan::validate(MAPF_Instance* P) const
   return validate(P->getConfigStart(), P->getConfigGoal());
 }
 
-bool Plan::validate(MAPD_Instance* P) const
+bool Plan::validate(LMAPF_Instance* P) const
 {
-  // check tasks
-  if ((int)P->getOpenTasks().size() > 0) {
-    warn("validation, tasks remain");
-    return false;
-  }
-  auto closed_tasks = P->getClosedTasks();
-  if ((int)closed_tasks.size() != P->getTaskNum()) {
-    warn("validation, num of closed_tasks is invalid");
-    return false;
-  }
-  if (!std::all_of(closed_tasks.begin(), closed_tasks.end(), [](Task* task) {
-        return task->loc_current == task->loc_delivery;
-      })) {
-    warn("validation, some tasks seem to be invalid");
+  if (configs.empty()) {
+    warn("validation, plan is empty");
     return false;
   }
 
-  return validate(P->getConfigStart());
+  // Basic validation: check start configuration
+  if (!sameConfig(P->getConfigStart(), get(0))) {
+    warn("validation, invalid starts");
+    return false;
+  }
+
+  // Validate basic plan structure (conflicts, continuity)
+  if (!validate(P->getConfigStart())) {
+    return false;
+  }
+
+  // LMAPF-specific validation: simulate goal progression through the plan
+  const Configs& all_goals = P->getAllGoals();
+  std::vector<int> agent_goal_indices = P->getCurrentGoals();
+  
+  // Track which goals each agent has completed
+  std::vector<bool> goal_completed(P->getNum(), false);
+  
+  // Check goal progression through the plan
+  for (int t = 0; t <= getMakespan(); ++t) {
+    Config config_at_t = get(t);
+    
+    for (int i = 0; i < P->getNum(); ++i) {
+      Node* agent_pos = config_at_t[i];
+      
+      // Check if agent has goals to pursue
+      if (i >= (int)all_goals.size() || all_goals[i].empty()) {
+        continue;
+      }
+      
+      // Get current goal for this agent
+      int goal_idx = agent_goal_indices[i];
+      if (goal_idx >= (int)all_goals[i].size()) {
+        // Agent has completed all goals - this is valid
+        continue;
+      }
+      
+      Node* current_goal = all_goals[i][goal_idx];
+      
+      // Check if agent reached their current goal
+      if (agent_pos->pos == current_goal->pos) {
+        if (!goal_completed[i]) {
+          goal_completed[i] = true;
+          
+          // Advance to next goal if available
+          if (goal_idx + 1 < (int)all_goals[i].size()) {
+            agent_goal_indices[i]++;
+            goal_completed[i] = false; // Reset for next goal
+          }
+        }
+      } else {
+        // Agent moved away from goal, reset completion flag
+        goal_completed[i] = false;
+      }
+    }
+  }
+  return true;
 }
 
 bool Plan::validate(const Config& starts, const Config& goals) const

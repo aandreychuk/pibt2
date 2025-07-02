@@ -54,7 +54,7 @@ public:
 
   // check the plan is valid or not
   bool validate(MAPF_Instance* P) const;
-  bool validate(MAPD_Instance* P) const;
+  bool validate(LMAPF_Instance* P) const;
   bool validate(const Config& starts, const Config& goals) const;
   bool validate(const Config& starts) const;
 

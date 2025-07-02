@@ -129,7 +129,7 @@ public:
 class MAPF_Solver : public MinimumSolver
 {
 protected:
-  LMAPF_Instance* const P;  // problem instance
+  Problem* const P;  // problem instance
 
 private:
   // useful info
@@ -231,66 +231,8 @@ protected:
   std::vector<std::vector<int>> PATH_TABLE;
 
 public:
-  MAPF_Solver(LMAPF_Instance* _P);
+  MAPF_Solver(Problem* _P);
   virtual ~MAPF_Solver();
 
-  LMAPF_Instance* getP() { return P; }
-};
-
-// ====================================================
-
-class MAPD_Solver : public MinimumSolver
-{
-protected:
-  MAPD_Instance* const P;  // problem instance
-
-  std::vector<Nodes> hist_targets;  // time, agent -> current target
-  std::vector<Tasks> hist_tasks;    // time, agent -> assigned_task
-
-public:
-  void printResult();
-
-  // -------------------------------
-  // log
-public:
-  virtual void makeLog(const std::string& logfile = "./result.txt");
-
-protected:
-  virtual void makeLogBasicInfo(std::ofstream& log);
-  virtual void makeLogSolution(std::ofstream& log);
-
-  // -------------------------------
-  // distance
-protected:
-  bool use_distance_table;
-  int preprocessing_comp_time;                          // computation time
-  using DistanceTable = std::vector<std::vector<int>>;  // [node_id][node_id]
-  DistanceTable distance_table;                         // distance table
-  int pathDist(Node* const s, Node* const g) const;
-
-private:
-  void createDistanceTable();
-
-  // -------------------------------
-  // metric
-public:
-  float getTotalServiceTime();
-  float getAverageServiceTime();
-
-  // -------------------------------
-  // main
-public:
-  void solve();
-
-private:
-  void exec();
-
-protected:
-  virtual void run() {}  // main
-
-public:
-  MAPD_Solver(MAPD_Instance* _P, bool _use_distance_table = false);
-  virtual ~MAPD_Solver();
-
-  MAPD_Instance* getP() { return P; }
+  Problem* getP() { return P; }
 };
