@@ -70,7 +70,7 @@ void MinimumSolver::warn(const std::string& msg) const
 // base class with utilities
 // -----------------------------------------------
 
-MAPF_Solver::MAPF_Solver(MAPF_Instance* _P)
+MAPF_Solver::MAPF_Solver(LMAPF_Instance* _P)
     : MinimumSolver(_P),
       P(_P),
       LB_soc(0),
@@ -254,15 +254,36 @@ void MAPF_Solver::makeLogSolution(std::ofstream& log)
 // -------------------------------
 int MAPF_Solver::pathDist(const int i, Node* const s) const
 {
-  if (distance_table_p != nullptr) {
+  /*if (distance_table_p != nullptr) {
     return distance_table_p->operator[](i)[s->id];
-  }
+  }*/
   return distance_table[i][s->id];
 }
 
 int MAPF_Solver::pathDist(const int i) const
 {
   return pathDist(i, P->getStart(i));
+}
+
+void MAPF_Solver::createDistanceTable(int i)
+{
+  distance_table[i] = std::vector<int>(G->getNodesSize(), max_timestep);
+  // breadth first search
+  std::queue<Node*> OPEN;
+  Node* n = P->getGoal(i);
+  OPEN.push(n);
+  distance_table[i][n->id] = 0;
+  while (!OPEN.empty()) {
+    n = OPEN.front();
+    OPEN.pop();
+    const int d_n = distance_table[i][n->id];
+    for (auto m : n->neighbor) {
+      const int d_m = distance_table[i][m->id];
+      if (d_n + 1 >= d_m) continue;
+      distance_table[i][m->id] = d_n + 1;
+      OPEN.push(m);
+    }
+  }
 }
 
 void MAPF_Solver::createDistanceTable()

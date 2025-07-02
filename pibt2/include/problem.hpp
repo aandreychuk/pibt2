@@ -63,11 +63,25 @@ public:
   Node* getGoal(int i) const;   // return  goal of a_i
   Config getConfigStart() const { return config_s; };
   Config getConfigGoal() const { return config_g; };
-  int getMaxTimestep() { return max_timestep; };
-  int getMaxCompTime() { return max_comp_time; };
+  int getMaxTimestep() const { return max_timestep; };
+  int getMaxCompTime() const { return max_comp_time; };
   std::string getInstanceFileName() { return instance; };
 
   void setMaxCompTime(const int t) { max_comp_time = t; }
+};
+
+class LMAPF_Instance : public Problem
+{
+  const bool instance_initialized;  // for memory manage
+  Configs all_goals;
+  std::vector<int> cur_goals;
+
+public:
+  int seed;
+  LMAPF_Instance(const std::string& _instance, int max_agents = -1);
+  LMAPF_Instance():instance_initialized(false) {}
+  void update_goals(Config cur_positions);
+  ~LMAPF_Instance();
 };
 
 class MAPF_Instance : public Problem

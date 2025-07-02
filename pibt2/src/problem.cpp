@@ -294,6 +294,137 @@ void MAPF_Instance::makeScenFile(const std::string& output_file)
 }
 
 // -------------------------------------------
+// LMAPF
+LMAPF_Instance::LMAPF_Instance(const std::string& _instance, int max_agents)
+    : Problem(_instance), instance_initialized(true)
+{
+  // read instance file
+  std::ifstream file(instance);
+  if (!file) halt("file " + instance + " is not found.");
+  std::cout<<instance<<"\n";
+
+  std::string line;
+  std::smatch results;
+  std::regex r_comment = std::regex(R"(#.+)");
+  std::regex r_map = std::regex(R"(map_file=(.+))");
+  std::regex r_agents = std::regex(R"(agents=(\d+))");
+  std::regex r_seed = std::regex(R"(seed=(\d+))");
+  std::regex r_random_problem = std::regex(R"(random_problem=(\d+))");
+  std::regex r_well_formed = std::regex(R"(well_formed=(\d+))");
+  std::regex r_max_timestep = std::regex(R"(max_timestep=(\d+))");
+  std::regex r_max_comp_time = std::regex(R"(max_comp_time=(\d+))");
+  std::regex r_s = std::regex(R"(start: \((\d+), (\d+)\))");
+  std::regex r_g = std::regex(R"(goal: \((\d+), (\d+)\))");
+  Config goals;
+
+  bool read_scen = true;
+  while (getline(file, line)) {
+    // for CRLF coding
+    if (*(line.end() - 1) == 0x0d) line.pop_back();
+    // comment
+    if (std::regex_match(line, results, r_comment)) {
+      continue;
+    }
+    // read map
+    if (std::regex_match(line, results, r_map)) {
+      G = new Grid(results[1].str());
+      continue;
+    }
+    // set agent num
+    if (std::regex_match(line, results, r_agents)) {
+      num_agents = std::stoi(results[1].str());
+      continue;
+    }
+    if(max_agents > 0 and num_agents > max_agents)
+      num_agents = max_agents;
+    // set random seed
+    if (std::regex_match(line, results, r_seed)) {
+      MT = new std::mt19937(std::stoi(results[1].str()));
+      seed = std::stoi(results[1].str());
+      continue;
+    }
+    // skip reading initial/goal nodes
+    if (std::regex_match(line, results, r_random_problem)) {
+      if (std::stoi(results[1].str())) {
+        read_scen = false;
+        config_s.clear();
+        config_g.clear();
+      }
+      continue;
+    }
+    // set max timestep
+    if (std::regex_match(line, results, r_max_timestep)) {
+      max_timestep = std::stoi(results[1].str());
+      continue;
+    }
+    // set max computation time
+    if (std::regex_match(line, results, r_max_comp_time)) {
+      max_comp_time = std::stoi(results[1].str());
+      continue;
+    }
+    //read agents starts and goals
+    if (std::regex_match(line, results, r_s) &&
+        (int)config_s.size() < num_agents) {
+      int x_s = std::stoi(results[1].str());
+      int y_s = std::stoi(results[2].str());
+      if (!G->existNode(x_s, y_s)) {
+        halt("start node (" + std::to_string(x_s) + ", " + std::to_string(y_s) +
+             ") does not exist, invalid scenario");
+      }
+
+      Node* s = G->getNode(x_s, y_s);
+      config_s.push_back(s);
+      if(not goals.empty())
+        all_goals.push_back(goals);
+      goals.clear();
+    }
+    if (std::regex_match(line, results, r_g)) {
+      int x_s = std::stoi(results[1].str());
+      int y_s = std::stoi(results[2].str());
+      if (!G->existNode(x_s, y_s)) {
+        halt("goal node (" + std::to_string(x_s) + ", " + std::to_string(y_s) +
+             ") does not exist, invalid scenario");
+      }
+      Node* s = G->getNode(x_s, y_s);
+      goals.push_back(s);
+    }
+  }
+  all_goals.push_back(goals);
+  cur_goals = std::vector<int>(num_agents, 0);
+  // set default value not identified params
+  if (MT == nullptr) MT = new std::mt19937(DEFAULT_SEED);
+  if (max_timestep == 0) max_timestep = DEFAULT_MAX_TIMESTEP;
+  if (max_comp_time == 0) max_comp_time = DEFAULT_MAX_COMP_TIME;
+
+  // check starts/goals
+  if (num_agents <= 0) halt("invalid number of agents");
+  const int config_s_size = config_s.size();
+  if (!config_s.empty() && num_agents > config_s_size) {
+    warn("given starts/goals are not sufficient\nrandomly create instances");
+  }
+  for(auto g: all_goals)
+    config_g.push_back(g.front());
+
+}
+
+LMAPF_Instance::~LMAPF_Instance()
+{
+  if (instance_initialized) {
+    if (G != nullptr) delete G;
+    if (MT != nullptr) delete MT;
+  }
+}
+
+void LMAPF_Instance::update_goals(Config cur_positions)
+{
+  for(size_t i=0; i < cur_positions.size(); i++)
+    if(cur_positions[i]->pos == config_g[i]->pos) {
+      cur_goals[i]++;
+      config_g[i] = all_goals[i][cur_goals[i]];
+    }
+}
+
+// -------------------------------------------
 // MAPD
 MAPD_Instance::MAPD_Instance(const std::string& _instance)
     : Problem(_instance), current_timestep(-1), specify_pickup_deliv_locs(true)

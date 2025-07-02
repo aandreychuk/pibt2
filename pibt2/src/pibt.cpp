@@ -2,7 +2,7 @@
 
 const std::string PIBT::SOLVER_NAME = "PIBT";
 
-PIBT::PIBT(MAPF_Instance* _P)
+PIBT::PIBT(LMAPF_Instance* _P)
     : MAPF_Solver(_P),
       occupied_now(Agents(G->getNodesSize(), nullptr)),
       occupied_next(Agents(G->getNodesSize(), nullptr))
@@ -12,6 +12,7 @@ PIBT::PIBT(MAPF_Instance* _P)
 
 void PIBT::run()
 {
+  std::cout<<"RUN PIBT\n";
   // compare priority of agents
   auto compare = [](Agent* a, const Agent* b) {
     if (a->elapsed != b->elapsed) return a->elapsed > b->elapsed;
@@ -20,6 +21,7 @@ void PIBT::run()
     return a->tie_breaker > b->tie_breaker;
   };
   Agents A;
+  int reached_goals=0;
 
   // initialize
   for (int i = 0; i < P->getNum(); ++i) {
@@ -41,7 +43,7 @@ void PIBT::run()
   // main loop
   int timestep = 0;
   while (true) {
-    info(" ", "elapsed:", getSolverElapsedTime(), ", timestep:", timestep);
+    //info(" ", "elapsed:", getSolverElapsedTime(), ", timestep:", timestep);
 
     // planning
     std::sort(A.begin(), A.end(), compare);
@@ -54,7 +56,7 @@ void PIBT::run()
     }
 
     // acting
-    bool check_goal_cond = true;
+    bool check_goal_cond = false;
     Config config(P->getNum(), nullptr);
     for (auto a : A) {
       // clear
@@ -74,6 +76,16 @@ void PIBT::run()
 
     // update plan
     solution.add(config);
+    P->update_goals(config);
+    for (auto a : A)
+    {
+      int old_goal = a->g->id;
+      a->g = P->getGoal(a->id);
+      if(old_goal != a->g->id) {
+        createDistanceTable(a->id);
+        reached_goals++;
+      }
+    }
 
     ++timestep;
 
@@ -88,6 +100,10 @@ void PIBT::run()
       break;
     }
   }
+  std::cout<<"Throughput = "<<reached_goals/512.0<<"\n";
+  std::ofstream out("log.json", std::ios::app);
+  out<<R"({"metrics": {"throughput": )"<<reached_goals/512.0<<", \"runtime\": "<<getSolverElapsedTime()/1000.0<<R"(}, "env_grid_search": {"map_name": "wfi_warehouse", "num_agents": )"<<P->getNum()<<", \"seed\": "<<P->seed<<"}, \"algorithm\": \"PIBT\"}, ";
+  out.close();
 
   // memory clear
   for (auto a : A) delete a;
@@ -100,7 +116,7 @@ bool PIBT::funcPIBT(Agent* ai, Agent* aj)
     int d_v = pathDist(ai->id, v);
     int d_u = pathDist(ai->id, u);
     if (d_v != d_u) return d_v < d_u;
-    // tie break
+    // tie-break
     if (occupied_now[v->id] != nullptr && occupied_now[u->id] == nullptr)
       return false;
     if (occupied_now[v->id] == nullptr && occupied_now[u->id] != nullptr)

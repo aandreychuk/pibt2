@@ -12,7 +12,7 @@
 
 void printHelp();
 std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
-                                       MAPF_Instance* P, bool verbose, int argc,
+                                       LMAPF_Instance* P, bool verbose, int argc,
                                        char* argv[]);
 
 int main(int argc, char* argv[])
@@ -33,16 +33,18 @@ int main(int argc, char* argv[])
       {"time-limit", required_argument, 0, 'T'},
       {"log-short", no_argument, 0, 'L'},
       {"make-scen", no_argument, 0, 'P'},
+      {"num-agents", no_argument, 0, 'n'},
       {0, 0, 0, 0},
   };
   bool make_scen = false;
   bool log_short = false;
   int max_comp_time = -1;
+  int num_agents = -1;
 
   // command line args
   int opt, longindex;
   opterr = 0;  // ignore getopt error
-  while ((opt = getopt_long(argc, argv, "i:o:s:vhPT:L", longopts,
+  while ((opt = getopt_long(argc, argv, "n:i:o:s:vhPT:L", longopts,
                             &longindex)) != -1) {
     switch (opt) {
       case 'i':
@@ -69,6 +71,9 @@ int main(int argc, char* argv[])
       case 'T':
         max_comp_time = std::atoi(optarg);
         break;
+      case 'n':
+        num_agents = std::atoi(optarg);
+        break;
       default:
         break;
     }
@@ -82,25 +87,27 @@ int main(int argc, char* argv[])
   }
 
   // set problem
-  auto P = MAPF_Instance(instance_file);
-
+  //auto P = MAPF_Instance(instance_file);
+  std::cout<<num_agents<<" MAX AGENTS\n";
+  auto P = LMAPF_Instance(instance_file, num_agents);
+  std::cout<<" LMAPF LOADED\n";
   // set max computation time (otherwise, use param in instance_file)
   if (max_comp_time != -1) P.setMaxCompTime(max_comp_time);
 
   // create scenario
-  if (make_scen) {
+  /*if (make_scen) {
     P.makeScenFile(output_file);
     return 0;
-  }
+  }*/
 
   // solve
   auto solver = getSolver(solver_name, &P, verbose, argc, argv_copy);
   solver->setLogShort(log_short);
   solver->solve();
-  if (solver->succeed() && !solver->getSolution().validate(&P)) {
+  /*if (solver->succeed() && !solver->getSolution().validate(&P)) {
     std::cout << "error@mapf: invalid results" << std::endl;
     return 0;
-  }
+  }*/
   solver->printResult();
 
   // output result
@@ -113,7 +120,7 @@ int main(int argc, char* argv[])
 }
 
 std::unique_ptr<MAPF_Solver> getSolver(const std::string solver_name,
-                                       MAPF_Instance* P, bool verbose, int argc,
+                                       LMAPF_Instance* P, bool verbose, int argc,
                                        char* argv[])
 {
   std::unique_ptr<MAPF_Solver> solver;

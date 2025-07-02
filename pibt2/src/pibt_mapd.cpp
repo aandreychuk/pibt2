@@ -193,7 +193,6 @@ void PIBT_MAPD::run()
   // memory clear
   for (auto a : A) delete a;
 }
-
 bool PIBT_MAPD::funcPIBT(Agent* ai, Agent* aj)
 {
   // compare two nodes
@@ -206,7 +205,6 @@ bool PIBT_MAPD::funcPIBT(Agent* ai, Agent* aj)
       return false;
     if (occupied_now[v->id] == nullptr && occupied_now[u->id] != nullptr)
       return true;
-    // randomize
     return false;
   };
 

@@ -2,7 +2,7 @@
 
 const std::string HCA::SOLVER_NAME = "HCA";
 
-HCA::HCA(MAPF_Instance* _P)
+HCA::HCA(LMAPF_Instance* _P)
     : MAPF_Solver(_P),
       table_starts(G->getNodesSize(), false),
       table_goals(G->getNodesSize(), false)

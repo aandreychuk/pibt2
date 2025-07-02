@@ -10,6 +10,7 @@
 
 #pragma once
 #include "solver.hpp"
+#include <fstream>
 
 class PIBT : public MAPF_Solver
 {
@@ -44,7 +45,7 @@ private:
   void run();
 
 public:
-  PIBT(MAPF_Instance* _P);
+  PIBT(LMAPF_Instance* _P);
   ~PIBT() {}
 
   void setParams(int argc, char* argv[]);

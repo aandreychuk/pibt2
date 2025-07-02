@@ -4,7 +4,7 @@
 
 const std::string PushAndSwap::SOLVER_NAME = "PushAndSwap";
 
-PushAndSwap::PushAndSwap(MAPF_Instance* _P)
+PushAndSwap::PushAndSwap(LMAPF_Instance* _P)
     : MAPF_Solver(_P),
       flg_compress(true),
       disable_dist_init(false),

@@ -85,6 +85,7 @@ int main(int argc, char* argv[])
   // set max computation time (otherwise, use param in instance_file)
   if (max_comp_time != -1) P.setMaxCompTime(max_comp_time);
 
+  use_distance_table = false;
   // solve
   auto solver =
       getSolver(solver_name, &P, verbose, argc, argv_copy, use_distance_table);

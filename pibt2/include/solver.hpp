@@ -129,7 +129,7 @@ public:
 class MAPF_Solver : public MinimumSolver
 {
 protected:
-  MAPF_Instance* const P;  // problem instance
+  LMAPF_Instance* const P;  // problem instance
 
 private:
   // useful info
@@ -194,6 +194,7 @@ public:
                Node* const s) const;  // get path distance between s -> g_i
   int pathDist(const int i) const;    // get path distance between s_i -> g_i
   void createDistanceTable();         // compute distance table
+  void createDistanceTable(int i);         // compute distance table
   void setDistanceTable(DistanceTable* p)
   {
     distance_table_p = p;
@@ -230,10 +231,10 @@ protected:
   std::vector<std::vector<int>> PATH_TABLE;
 
 public:
-  MAPF_Solver(MAPF_Instance* _P);
+  MAPF_Solver(LMAPF_Instance* _P);
   virtual ~MAPF_Solver();
 
-  MAPF_Instance* getP() { return P; }
+  LMAPF_Instance* getP() { return P; }
 };
 
 // ====================================================
