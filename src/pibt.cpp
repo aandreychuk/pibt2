@@ -8,6 +8,10 @@ PIBT::PIBT(Problem* _P)
       occupied_next(Agents(G->getNodesSize(), nullptr))
 {
   solver_name = PIBT::SOLVER_NAME;
+  
+  // Detect instance type
+  LMAPF_Instance* lmapf_instance = dynamic_cast<LMAPF_Instance*>(P);
+  is_lmapf_instance = (lmapf_instance != nullptr);
 }
 
 void PIBT::run()
@@ -21,7 +25,7 @@ void PIBT::run()
     return a->tie_breaker > b->tie_breaker;
   };
   Agents A;
-  int reached_goals=0;
+  reached_goals = 0;
 
   // initialize
   for (int i = 0; i < P->getNum(); ++i) {
@@ -117,13 +121,17 @@ void PIBT::run()
       break;
     }
   }
+  
+  // Store metrics
+  timesteps_run = timestep;
+  
   // Output different metrics based on instance type
   std::ofstream out("log.json", std::ios::app);
   int seed = lmapf_instance ? lmapf_instance->seed : 0;
   
   if (lmapf_instance) {
     // LMAPF metrics: throughput
-    double throughput = reached_goals / 512.0;
+    throughput = double(reached_goals) / max_timestep;
     std::cout << "Throughput = " << throughput << "\n";
     out << R"({"metrics": {"throughput": )" << throughput 
         << R"(, "runtime": )" << getSolverElapsedTime()/1000.0 
@@ -147,6 +155,41 @@ void PIBT::run()
 
   // memory clear
   for (auto a : A) delete a;
+}
+
+void PIBT::makeLogBasicInfo(std::ofstream& log)
+{
+  Grid* grid = reinterpret_cast<Grid*>(P->getG());
+  log << "instance=" << P->getInstanceFileName() << "\n";
+  log << "agents=" << P->getNum() << "\n";
+  log << "map_file=" << grid->getMapFileName() << "\n";
+  log << "solver=" << solver_name << "\n";
+  
+  if (is_lmapf_instance) {
+    // LMAPF-specific metrics
+    log << "solved=1\n";  // LMAPF doesn't have a "solved" state, always consider it as running
+    log << "reached_goals=" << reached_goals << "\n";
+    log << "timesteps_run=" << timesteps_run << "\n";
+    log << "throughput=" << throughput << "\n";
+    log << "goals_per_timestep=" << (timesteps_run > 0 ? (double)reached_goals / timesteps_run : 0.0) << "\n";
+    log << "max_timestep=" << max_timestep << "\n";
+    
+    // Still include SOC and makespan for compatibility but note they're less meaningful for LMAPF
+    log << "soc=" << solution.getSOC() << "\n";
+    log << "lb_soc=" << getLowerBoundSOC() << "\n";
+    log << "makespan=" << solution.getMakespan() << "\n";
+    log << "lb_makespan=" << getLowerBoundMakespan() << "\n";
+  } else {
+    // MAPF-specific metrics (original behavior)
+    log << "solved=" << solved << "\n";
+    log << "soc=" << solution.getSOC() << "\n";
+    log << "lb_soc=" << getLowerBoundSOC() << "\n";
+    log << "makespan=" << solution.getMakespan() << "\n";
+    log << "lb_makespan=" << getLowerBoundMakespan() << "\n";
+  }
+  
+  log << "comp_time=" << getCompTime() << "\n";
+  log << "preprocessing_comp_time=" << preprocessing_comp_time << "\n";
 }
 
 bool PIBT::funcPIBT(Agent* ai, Agent* aj)
@@ -199,14 +242,19 @@ void PIBT::setParams(int argc, char* argv[])
 {
   struct option longopts[] = {
       {"disable-dist-init", no_argument, 0, 'd'},
+      {"weights-file", required_argument, 0, 'w'},
       {0, 0, 0, 0},
   };
   optind = 1;  // reset
   int opt, longindex;
-  while ((opt = getopt_long(argc, argv, "d", longopts, &longindex)) != -1) {
+  while ((opt = getopt_long(argc, argv, "dw:", longopts, &longindex)) != -1) {
     switch (opt) {
       case 'd':
         disable_dist_init = true;
+        break;
+      case 'w':
+        weights_file = std::string(optarg);
+        setWeightsFile(weights_file);
         break;
       default:
         break;
@@ -220,5 +268,8 @@ void PIBT::printHelp()
             << "  -d --disable-dist-init"
             << "        "
             << "disable initialization of priorities "
-            << "using distance from starts to goals" << std::endl;
+            << "using distance from starts to goals\n"
+            << "  -w --weights-file [FILE]"
+            << "      "
+            << "use edge weights from CSV file for distance calculation" << std::endl;
 }

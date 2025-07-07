@@ -35,14 +35,24 @@ private:
   Agents occupied_now;
   Agents occupied_next;
 
-  // option
+  // options
   bool disable_dist_init = false;
+  std::string weights_file = "";
+
+  // LMAPF-specific metrics
+  int reached_goals = 0;
+  int timesteps_run = 0;
+  double throughput = 0.0;
+  bool is_lmapf_instance = false;
 
   // result of priority inheritance: true -> valid, false -> invalid
   bool funcPIBT(Agent* ai, Agent* aj = nullptr);
 
   // main
   void run();
+
+  // Override logging methods for LMAPF support
+  void makeLogBasicInfo(std::ofstream& log) override;
 
 public:
   PIBT(Problem* _P);

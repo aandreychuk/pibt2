@@ -2,9 +2,11 @@
 #include <getopt.h>
 
 #include <chrono>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <sstream>
 #include <unordered_map>
 
 #include "paths.hpp"
@@ -143,6 +145,18 @@ protected:
   DistanceTable* distance_table_p;  // pointer, used in nested solvers
   int preprocessing_comp_time;      // computation time
 
+  // edge weights for weighted pathfinding
+  struct EdgeWeights {
+    double right = 1.0;   // weight to move right
+    double up = 1.0;      // weight to move up  
+    double left = 1.0;    // weight to move left
+    double down = 1.0;    // weight to move down
+    double wait = 1.0;    // weight to wait in place
+  };
+  std::vector<EdgeWeights> node_weights;  // [node_id] -> weights
+  bool use_weighted_edges = false;        // whether to use weighted edges
+  std::string weights_file_path = "";     // path to weights CSV file
+
   // -------------------------------
   // main
 private:
@@ -195,6 +209,7 @@ public:
   int pathDist(const int i) const;    // get path distance between s_i -> g_i
   void createDistanceTable();         // compute distance table
   void createDistanceTable(int i);         // compute distance table
+  void createDistanceTableWeighted(int i); // compute distance table with weights (Dijkstra)
   void setDistanceTable(DistanceTable* p)
   {
     distance_table_p = p;
@@ -235,4 +250,9 @@ public:
   virtual ~MAPF_Solver();
 
   Problem* getP() { return P; }
+  
+  // edge weights functionality
+  void setWeightsFile(const std::string& file_path);
+  bool loadEdgeWeights(const std::string& file_path);
+  double getEdgeWeight(int from_node, int to_node) const;
 };

@@ -268,28 +268,11 @@ int MAPF_Solver::pathDist(const int i) const
 void MAPF_Solver::createDistanceTable(int i)
 {
   distance_table[i] = std::vector<int>(G->getNodesSize(), max_timestep);
-  // breadth first search
-  std::queue<Node*> OPEN;
-  Node* n = P->getGoal(i);
-  OPEN.push(n);
-  distance_table[i][n->id] = 0;
-  while (!OPEN.empty()) {
-    n = OPEN.front();
-    OPEN.pop();
-    const int d_n = distance_table[i][n->id];
-    for (auto m : n->neighbor) {
-      const int d_m = distance_table[i][m->id];
-      if (d_n + 1 >= d_m) continue;
-      distance_table[i][m->id] = d_n + 1;
-      OPEN.push(m);
-    }
-  }
-}
-
-void MAPF_Solver::createDistanceTable()
-{
-  for (int i = 0; i < P->getNum(); ++i) {
-    // breadth first search
+  
+  if (use_weighted_edges) {
+    createDistanceTableWeighted(i);
+  } else {
+    // breadth first search (original implementation)
     std::queue<Node*> OPEN;
     Node* n = P->getGoal(i);
     OPEN.push(n);
@@ -303,6 +286,32 @@ void MAPF_Solver::createDistanceTable()
         if (d_n + 1 >= d_m) continue;
         distance_table[i][m->id] = d_n + 1;
         OPEN.push(m);
+      }
+    }
+  }
+}
+
+void MAPF_Solver::createDistanceTable()
+{
+  for (int i = 0; i < P->getNum(); ++i) {
+    if (use_weighted_edges) {
+      createDistanceTableWeighted(i);
+    } else {
+      // breadth first search (original implementation)
+      std::queue<Node*> OPEN;
+      Node* n = P->getGoal(i);
+      OPEN.push(n);
+      distance_table[i][n->id] = 0;
+      while (!OPEN.empty()) {
+        n = OPEN.front();
+        OPEN.pop();
+        const int d_n = distance_table[i][n->id];
+        for (auto m : n->neighbor) {
+          const int d_m = distance_table[i][m->id];
+          if (d_n + 1 >= d_m) continue;
+          distance_table[i][m->id] = d_n + 1;
+          OPEN.push(m);
+        }
       }
     }
   }
@@ -536,5 +545,170 @@ void MAPF_Solver::updatePathTableWithoutClear(const int id, const Path& p,
   if (makespan > p_makespan) {
     auto v_id = p[p_makespan]->id;
     for (int t = p_makespan + 1; t <= makespan; ++t) PATH_TABLE[t][v_id] = id;
+  }
+}
+
+// -------------------------------
+// Edge weights functionality
+// -------------------------------
+
+void MAPF_Solver::setWeightsFile(const std::string& file_path)
+{
+  weights_file_path = file_path;
+  if (!file_path.empty()) {
+    use_weighted_edges = loadEdgeWeights(file_path);
+    if (use_weighted_edges) {
+      info("  loaded edge weights from: ", file_path);
+    } else {
+      warn("failed to load edge weights, using uniform weights");
+    }
+  }
+}
+
+bool MAPF_Solver::loadEdgeWeights(const std::string& file_path)
+{
+  std::ifstream file(file_path);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  // Initialize weights vector
+  node_weights.resize(G->getNodesSize());
+
+  std::string line;
+  bool first_line = true;
+  
+  while (std::getline(file, line)) {
+    // Skip header line
+    if (first_line) {
+      first_line = false;
+      continue;
+    }
+    
+    // Skip empty lines
+    if (line.empty()) continue;
+    
+    std::stringstream ss(line);
+    std::string cell;
+    std::vector<std::string> cells;
+    
+    // Parse CSV line
+    while (std::getline(ss, cell, '\t')) {
+      cells.push_back(cell);
+    }
+    
+    if (cells.size() < 9) continue; // Need at least 9 columns
+    
+    try {
+      int node_id = std::stoi(cells[0]);
+      if (node_id >= 0 && node_id < G->getNodesSize()) {
+        EdgeWeights& weights = node_weights[node_id];
+        
+        // Parse weights, handle "inf" as a very large number
+        auto parseWeight = [](const std::string& str) -> double {
+          if (str == "inf") return 1000000.0; // Large number instead of inf
+          return std::stod(str);
+        };
+        
+        weights.right = parseWeight(cells[4]); // weight_to_RIGHT
+        weights.up = parseWeight(cells[5]);    // weight_to_UP  
+        weights.left = parseWeight(cells[6]);  // weight_to_LEFT
+        weights.down = parseWeight(cells[7]);  // weight_to_DOWN
+        weights.wait = parseWeight(cells[8]);  // weight_for_WAIT
+      }
+    } catch (const std::exception& e) {
+      // Skip malformed lines
+      continue;
+    }
+  }
+  
+  file.close();
+  return true;
+}
+
+double MAPF_Solver::getEdgeWeight(int from_node, int to_node) const
+{
+  if (!use_weighted_edges || from_node >= (int)node_weights.size()) {
+    return 1.0; // Default uniform weight
+  }
+  
+  const EdgeWeights& weights = node_weights[from_node];
+  
+  // If same node (wait action)
+  if (from_node == to_node) {
+    return weights.wait;
+  }
+  
+  // Get nodes to determine direction
+  Node* from = G->getNode(from_node);
+  Node* to = G->getNode(to_node);
+  
+  if (from == nullptr || to == nullptr) return 1.0;
+  
+  // Determine direction based on position difference
+  int dx = to->pos.x - from->pos.x;
+  int dy = to->pos.y - from->pos.y;
+  
+  if (dx == 1 && dy == 0) return weights.right;  // Moving right
+  if (dx == 0 && dy == -1) return weights.up;    // Moving up
+  if (dx == -1 && dy == 0) return weights.left;  // Moving left
+  if (dx == 0 && dy == 1) return weights.down;   // Moving down
+  
+  return 1.0; // Default for unexpected cases
+}
+
+void MAPF_Solver::createDistanceTableWeighted(int i)
+{
+  // Dijkstra's algorithm for weighted shortest paths
+  distance_table[i] = std::vector<int>(G->getNodesSize(), max_timestep);
+  
+  // Priority queue: (distance, node_id)
+  std::priority_queue<std::pair<double, int>, 
+                      std::vector<std::pair<double, int>>,
+                      std::greater<std::pair<double, int>>> pq;
+  
+  std::vector<double> dist(G->getNodesSize(), std::numeric_limits<double>::infinity());
+  std::vector<bool> visited(G->getNodesSize(), false);
+  
+  // Start from goal (reverse search like original BFS)
+  Node* goal = P->getGoal(i);
+  dist[goal->id] = 0.0;
+  pq.push({0.0, goal->id});
+  
+  while (!pq.empty()) {
+    double d = pq.top().first;
+    int u = pq.top().second;
+    pq.pop();
+    
+    if (visited[u]) continue;
+    visited[u] = true;
+    
+    Node* node_u = G->getNode(u);
+    if (node_u == nullptr) continue;
+    
+    // Check all neighbors + wait action
+    std::vector<Node*> candidates = node_u->neighbor;
+    candidates.push_back(node_u); // Add wait action
+    
+    for (Node* node_v : candidates) {
+      int v = node_v->id;
+      if (visited[v]) continue;
+      
+      // Get edge weight (note: reversed direction since we're doing backward search)
+      double weight = getEdgeWeight(v, u);
+      double new_dist = dist[u] + weight;
+      
+      if (new_dist < dist[v]) {
+        dist[v] = new_dist;
+        pq.push({new_dist, v});
+      }
+    }
+  }
+  
+  // Convert double distances to int (ceiling)
+  for (int j = 0; j < G->getNodesSize(); ++j) {
+    distance_table[i][j] = (dist[j] == std::numeric_limits<double>::infinity()) 
+                              ? max_timestep 
+                              : static_cast<int>(std::ceil(dist[j]));
   }
 }
