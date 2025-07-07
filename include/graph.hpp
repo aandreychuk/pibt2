@@ -76,7 +76,7 @@ public:
 
 class Grid : public Graph
 {
-private:
+protected:
   std::string map_file;
   int width;
   int height;

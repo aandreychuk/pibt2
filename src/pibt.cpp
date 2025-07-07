@@ -1,17 +1,23 @@
-#include "../include/pibt.hpp"
+#include "pibt.hpp"
 
 const std::string PIBT::SOLVER_NAME = "PIBT";
 
-PIBT::PIBT(Problem* _P)
-    : MAPF_Solver(_P),
-      occupied_now(Agents(G->getNodesSize(), nullptr)),
-      occupied_next(Agents(G->getNodesSize(), nullptr))
+PIBT::PIBT(Problem* _P) : MAPF_Solver(_P), step_initialized(false)
 {
-  solver_name = PIBT::SOLVER_NAME;
+  occupied_now.resize(P->getG()->getNodesSize());
+  occupied_next.resize(P->getG()->getNodesSize());
+  solver_name = SOLVER_NAME;
   
   // Detect instance type
-  LMAPF_Instance* lmapf_instance = dynamic_cast<LMAPF_Instance*>(P);
-  is_lmapf_instance = (lmapf_instance != nullptr);
+  is_lmapf_instance = P->isLMAPF();
+}
+
+PIBT::~PIBT() {
+  // Clean up step execution agents if they exist
+  for (auto a : step_agents) {
+    delete a;
+  }
+  step_agents.clear();
 }
 
 void PIBT::run()
@@ -45,8 +51,7 @@ void PIBT::run()
   solution.add(P->getConfigStart());
 
   // Determine instance type once
-  LMAPF_Instance* lmapf_instance = dynamic_cast<LMAPF_Instance*>(P);
-  MAPF_Instance* mapf_instance = dynamic_cast<MAPF_Instance*>(P);
+  bool is_lmapf = P->isLMAPF();
 
   // main loop
   int timestep = 0;
@@ -86,19 +91,15 @@ void PIBT::run()
     solution.add(config);
     
     // Handle goal updates differently for LMAPF vs MAPF
-    if (lmapf_instance) {
-      // LMAPF: Update goals when agents reach them, get new goals
-      lmapf_instance->update_goals(config);
-      
+    if (is_lmapf) {
+      // LMAPF: Goal updates are handled externally (by PyPIBT)
+      // Just count reached goals for throughput calculation
       for (auto a : A) {
-        int old_goal = a->g->id;
-        a->g = P->getGoal(a->id);
-        if (old_goal != a->g->id) {
-          createDistanceTable(a->id);
+        if (a->v_next == a->g) {
           reached_goals++;
         }
       }
-    } else if (mapf_instance) {
+    } else {
       // MAPF: Agents stay at their goal once reached
       // No goal updates needed - agents keep their original goals
       for (auto a : A) {
@@ -111,7 +112,7 @@ void PIBT::run()
     ++timestep;
 
     // success (only for MAPF - when all agents reach their goals)
-    if (mapf_instance && check_goal_cond) {
+    if (!is_lmapf && check_goal_cond) {
       solved = true;
       break;
     }
@@ -127,9 +128,9 @@ void PIBT::run()
   
   // Output different metrics based on instance type
   std::ofstream out("log.json", std::ios::app);
-  int seed = lmapf_instance ? lmapf_instance->seed : 0;
+  int seed = 0; // Default seed - can be enhanced later if needed
   
-  if (lmapf_instance) {
+  if (is_lmapf) {
     // LMAPF metrics: throughput
     throughput = double(reached_goals) / max_timestep;
     std::cout << "Throughput = " << throughput << "\n";
@@ -196,8 +197,8 @@ bool PIBT::funcPIBT(Agent* ai, Agent* aj)
 {
   // compare two nodes
   auto compare = [&](Node* const v, Node* const u) {
-    int d_v = pathDist(ai->id, v);
-    int d_u = pathDist(ai->id, u);
+    int d_v = pathDist(v, ai->g);
+    int d_u = pathDist(u, ai->g);
     if (d_v != d_u) return d_v < d_u;
     // tie-break
     if (occupied_now[v->id] != nullptr && occupied_now[u->id] == nullptr)
@@ -260,6 +261,145 @@ void PIBT::setParams(int argc, char* argv[])
         break;
     }
   }
+}
+
+bool PIBT::initializeStep(const Config& start_positions, const Config& goal_positions) {
+  // Clean up any existing step agents
+  for (auto a : step_agents) {
+    delete a;
+  }
+  step_agents.clear();
+  
+  // Clear occupied tables
+  std::fill(occupied_now.begin(), occupied_now.end(), nullptr);
+  std::fill(occupied_next.begin(), occupied_next.end(), nullptr);
+  
+  // Initialize agents
+  for (int i = 0; i < P->getNum(); ++i) {
+    Node* s = start_positions[i];
+    Node* g = goal_positions[i];
+    int d = disable_dist_init ? 0 : pathDist(s, g);
+    Agent* a = new Agent{i,                          // id
+                         s,                          // current location
+                         nullptr,                    // next location
+                         g,                          // goal
+                         0,                          // elapsed
+                         d,                          // dist from s -> g
+                         getRandomFloat(0, 1, MT)};  // tie-breaker
+    step_agents.push_back(a);
+    occupied_now[s->id] = a;
+  }
+  
+  step_initialized = true;
+  return true;
+}
+
+bool PIBT::stepOnce() {
+  if (!step_initialized || step_agents.empty()) {
+    return false;
+  }
+  
+  // Clear occupied_next for this step
+  std::fill(occupied_next.begin(), occupied_next.end(), nullptr);
+  
+  // Compare priority of agents (same as in run())
+  auto compare = [](Agent* a, const Agent* b) {
+    if (a->elapsed != b->elapsed) return a->elapsed > b->elapsed;
+    if (a->init_d != b->init_d) return a->init_d > b->init_d;
+    return a->tie_breaker > b->tie_breaker;
+  };
+  
+  // Planning phase
+  std::sort(step_agents.begin(), step_agents.end(), compare);
+  for (auto a : step_agents) {
+    if (a->v_next == nullptr) {
+      funcPIBT(a);
+    }
+  }
+  
+  // Acting phase - update agent positions
+  for (auto a : step_agents) {
+    // Clear old position from occupied table
+    if (occupied_now[a->v_now->id] == a) {
+      occupied_now[a->v_now->id] = nullptr;
+    }
+    
+    // Update agent position
+    a->v_now = a->v_next;
+    a->v_next = nullptr;
+    
+    // Update occupied table
+    occupied_now[a->v_now->id] = a;
+    
+    // Update priority
+    a->elapsed = (a->v_now == a->g) ? 0 : a->elapsed + 1;
+  }
+  
+  return true;
+}
+
+Config PIBT::getCurrentPositions() const {
+  Config positions;
+  if (!step_initialized) {
+    return positions;
+  }
+  
+  positions.resize(step_agents.size());
+  for (const auto& agent : step_agents) {
+    positions[agent->id] = agent->v_now;
+  }
+  
+  return positions;
+}
+
+void PIBT::updateGoals() {
+  if (!step_initialized || step_agents.empty()) {
+    return;
+  }
+  
+  // Check if this is an LMAPF mode problem
+  if (!P->isLMAPF()) {
+    return; // Not in LMAPF mode, no goal updates needed
+  }
+  
+  // This method is now primarily used by PyPIBT which handles the goal updates manually
+  // We keep this for compatibility but the actual goal updates are done in PyPIBT::updateGoals()
+}
+
+bool PIBT::updateAgentGoal(int agent_id, Node* new_goal) {
+  if (!step_initialized || step_agents.empty() || agent_id < 0 || agent_id >= static_cast<int>(step_agents.size())) {
+    return false;
+  }
+  
+  // Find the agent by ID
+  Agent* agent = nullptr;
+  for (auto a : step_agents) {
+    if (a->id == agent_id) {
+      agent = a;
+      break;
+    }
+  }
+  
+  if (!agent || !new_goal) {
+    return false;
+  }
+  
+  // Update the agent's goal
+  Node* old_goal = agent->g;
+  agent->g = new_goal;
+  
+  // Update the problem instance's goal configuration
+  P->setAgentGoal(agent_id, new_goal);
+  
+  // Update distance table and priority for this agent
+  if (old_goal->id != new_goal->id) {
+    createDistanceTable(agent_id);
+    reached_goals++;
+    // Update initial distance for priority calculation
+    agent->init_d = disable_dist_init ? 0 : pathDist(agent->v_now, agent->g);
+  }
+  
+  return true;
 }
 
 void PIBT::printHelp()

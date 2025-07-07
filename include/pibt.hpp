@@ -45,6 +45,10 @@ private:
   double throughput = 0.0;
   bool is_lmapf_instance = false;
 
+  // Step-by-step execution state
+  Agents step_agents;
+  bool step_initialized = false;
+
   // result of priority inheritance: true -> valid, false -> invalid
   bool funcPIBT(Agent* ai, Agent* aj = nullptr);
 
@@ -56,7 +60,16 @@ private:
 
 public:
   PIBT(Problem* _P);
-  ~PIBT() {}
+  ~PIBT();
+
+  // Step-by-step execution methods for PyPIBT
+  bool initializeStep(const Config& start_positions, const Config& goal_positions);
+  bool stepOnce();
+  Config getCurrentPositions() const;
+  void updateGoals();  // For LMAPF instances
+  
+  // Manual goal update for individual agents (for PyPIBT LMAPF support)
+  bool updateAgentGoal(int agent_id, Node* new_goal);
 
   void setParams(int argc, char* argv[]);
   static void printHelp();

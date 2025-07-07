@@ -1,4 +1,4 @@
-#include "../include/pos.hpp"
+#include "pos.hpp"
 
 #include <cmath>
 #include <iomanip>

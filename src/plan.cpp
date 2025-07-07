@@ -1,4 +1,4 @@
-#include "../include/plan.hpp"
+#include "plan.hpp"
 
 Config Plan::get(const int t) const
 {
@@ -101,75 +101,27 @@ void Plan::operator+=(const Plan& other)
   for (int t = 1; t < other.size(); ++t) add(other.get(t));
 }
 
-bool Plan::validate(MAPF_Instance* P) const
+bool Plan::validate(Problem* P) const
 {
-  return validate(P->getConfigStart(), P->getConfigGoal());
-}
-
-bool Plan::validate(LMAPF_Instance* P) const
-{
-  if (configs.empty()) {
-    warn("validation, plan is empty");
-    return false;
-  }
-
-  // Basic validation: check start configuration
-  if (!sameConfig(P->getConfigStart(), get(0))) {
-    warn("validation, invalid starts");
-    return false;
-  }
-
-  // Validate basic plan structure (conflicts, continuity)
-  if (!validate(P->getConfigStart())) {
-    return false;
-  }
-
-  // LMAPF-specific validation: simulate goal progression through the plan
-  const Configs& all_goals = P->getAllGoals();
-  std::vector<int> agent_goal_indices = P->getCurrentGoals();
-  
-  // Track which goals each agent has completed
-  std::vector<bool> goal_completed(P->getNum(), false);
-  
-  // Check goal progression through the plan
-  for (int t = 0; t <= getMakespan(); ++t) {
-    Config config_at_t = get(t);
-    
-    for (int i = 0; i < P->getNum(); ++i) {
-      Node* agent_pos = config_at_t[i];
-      
-      // Check if agent has goals to pursue
-      if (i >= (int)all_goals.size() || all_goals[i].empty()) {
-        continue;
-      }
-      
-      // Get current goal for this agent
-      int goal_idx = agent_goal_indices[i];
-      if (goal_idx >= (int)all_goals[i].size()) {
-        // Agent has completed all goals - this is valid
-        continue;
-      }
-      
-      Node* current_goal = all_goals[i][goal_idx];
-      
-      // Check if agent reached their current goal
-      if (agent_pos->pos == current_goal->pos) {
-        if (!goal_completed[i]) {
-          goal_completed[i] = true;
-          
-          // Advance to next goal if available
-          if (goal_idx + 1 < (int)all_goals[i].size()) {
-            agent_goal_indices[i]++;
-            goal_completed[i] = false; // Reset for next goal
-          }
-        }
-      } else {
-        // Agent moved away from goal, reset completion flag
-        goal_completed[i] = false;
-      }
+  if (P->isLMAPF()) {
+    // For LMAPF, we mainly check start configuration and plan structure
+    if (configs.empty()) {
+      warn("validation, plan is empty");
+      return false;
     }
+
+    // Basic validation: check start configuration
+    if (!sameConfig(P->getConfigStart(), get(0))) {
+      warn("validation, invalid starts");
+      return false;
+    }
+
+    // Validate basic plan structure (conflicts, continuity)
+    return validate(P->getConfigStart());
+  } else {
+    // For MAPF, check both start and goal configurations
+    return validate(P->getConfigStart(), P->getConfigGoal());
   }
-  return true;
 }
 
 bool Plan::validate(const Config& starts, const Config& goals) const
@@ -240,7 +192,7 @@ int Plan::getMaxConstraintTime(const int id, Node* s, Node* g, Graph* G) const
   return 0;
 }
 
-int Plan::getMaxConstraintTime(const int id, MAPF_Instance* P) const
+int Plan::getMaxConstraintTime(const int id, Problem* P) const
 {
   return getMaxConstraintTime(id, P->getStart(id), P->getGoal(id), P->getG());
 }

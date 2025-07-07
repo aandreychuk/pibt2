@@ -1,4 +1,4 @@
-#include "../include/solver.hpp"
+#include "solver.hpp"
 
 #include <fstream>
 #include <iomanip>

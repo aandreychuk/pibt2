@@ -1,4 +1,4 @@
-#include "../include/paths.hpp"
+#include "paths.hpp"
 
 Paths::Paths(int num_agents)
 {

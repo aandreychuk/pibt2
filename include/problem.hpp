@@ -42,6 +42,9 @@ protected:
   int num_agents;        // number of agents
   int max_timestep;      // timestep limit
   int max_comp_time;     // comp_time limit, ms
+  
+  // LMAPF support
+  bool is_lmapf_mode;    // flag to control MAPF vs LMAPF behavior
 
   // utilities
   void halt(const std::string& msg) const;
@@ -49,10 +52,10 @@ protected:
 
 public:
   Problem(){};
-  Problem(const std::string& _instance) : instance(_instance) {}
+  Problem(const std::string& _instance) : instance(_instance), is_lmapf_mode(false) {}
   Problem(std::string _instance, Graph* _G, std::mt19937* _MT, Config _config_s,
           Config _config_g, int _num_agents, int _max_timestep,
-          int _max_comp_time);
+          int _max_comp_time, bool _is_lmapf = false);
   virtual ~Problem(){};
 
   Graph* getG() { return G; }
@@ -65,55 +68,19 @@ public:
   int getMaxTimestep() const { return max_timestep; };
   int getMaxCompTime() const { return max_comp_time; };
   std::string getInstanceFileName() { return instance; };
+  bool isLMAPF() const { return is_lmapf_mode; }
 
   void setMaxCompTime(const int t) { max_comp_time = t; }
-};
-
-class LMAPF_Instance : public Problem
-{
-  const bool instance_initialized;  // for memory manage
-  Configs all_goals;
-  std::vector<int> cur_goals;
-
-public:
-  int seed;
-  LMAPF_Instance(const std::string& _instance, int max_agents = -1);
-  LMAPF_Instance():instance_initialized(false) {}
-  void update_goals(Config cur_positions);
-  ~LMAPF_Instance();
+  void setLMAPFMode(bool lmapf) { is_lmapf_mode = lmapf; }
   
-  // Getters for validation
-  const Configs& getAllGoals() const { return all_goals; }
-  const std::vector<int>& getCurrentGoals() const { return cur_goals; }
-  Config getGoalConfigForAgent(int agent_id, int goal_index) const {
-    if (agent_id >= 0 && agent_id < (int)all_goals.size() && 
-        goal_index >= 0 && goal_index < (int)all_goals[agent_id].size()) {
-      return {all_goals[agent_id][goal_index]};
+  // Method to set an individual agent's goal (unified for both MAPF and LMAPF)
+  bool setAgentGoal(int agent_id, Node* new_goal) {
+    if (agent_id >= 0 && agent_id < num_agents && new_goal) {
+      config_g[agent_id] = new_goal;
+      return true;
     }
-    return {};
+    return false;
   }
 };
 
-class MAPF_Instance : public Problem
-{
-private:
-  const bool instance_initialized;  // for memory manage
 
-  // set starts and goals randomly
-  void setRandomStartsGoals();
-
-  // set well-formed instance
-  void setWellFormedInstance();
-
-public:
-  MAPF_Instance(const std::string& _instance);
-  MAPF_Instance(MAPF_Instance* P, Config _config_s, Config _config_g,
-                int _max_comp_time, int _max_timestep);
-  MAPF_Instance(MAPF_Instance* P, int _max_comp_time);
-  ~MAPF_Instance();
-
-  bool isInitializedInstance() const { return instance_initialized; }
-
-  // used when making new instance file
-  void makeScenFile(const std::string& output_file);
-};

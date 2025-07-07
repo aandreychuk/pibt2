@@ -91,11 +91,11 @@ int main(int argc, char* argv[])
   bool isLMAPF = detectInstanceType(instance_file);
   
   if (isLMAPF) {
-    std::cout << "Loading as LMAPF instance (multiple goals per agent)\n";
-    P = std::make_unique<LMAPF_Instance>(instance_file, num_agents);
+    std::cout << "LMAPF instances are now handled through PyPIBT - use Python interface instead\n";
+    return 1;
   } else {
-    std::cout << "Loading as MAPF instance (single goal per agent)\n";
-    P = std::make_unique<MAPF_Instance>(instance_file);
+    std::cout << "MAPF instances are now handled through PyPIBT - use Python interface instead\n"; 
+    return 1;
   }
   
   // set max computation time (otherwise, use param in instance_file)
